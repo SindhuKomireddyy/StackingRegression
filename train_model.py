@@ -1,215 +1,86 @@
-import os
+import streamlit as st
 import pickle
 import numpy as np
-import pandas as pd
-
-from sklearn.datasets import load_diabetes
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import RandomForestRegressor, StackingRegressor
-
-from sklearn.metrics import mean_absolute_error
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import r2_score
 
 # =====================================================
-# Create Models Folder
+# Load Model and Scaler
 # =====================================================
 
-os.makedirs("models", exist_ok=True)
+with open("models/stacking_regressor.pkl", "rb") as file:
+    model = pickle.load(file)
+
+with open("models/scaler.pkl", "rb") as file:
+    scaler = pickle.load(file)
 
 # =====================================================
-# Load Dataset
+# Streamlit UI
 # =====================================================
 
-data = load_diabetes()
-
-df = pd.DataFrame(
-    data.data,
-    columns=data.feature_names
+st.set_page_config(
+    page_title="Diabetes Progression Prediction",
+    page_icon="🩺"
 )
 
-df["target"] = data.target
-
-print("Dataset Shape :", df.shape)
-
-# =====================================================
-# Data Cleaning
-# =====================================================
-
-print("\nMissing Values")
-print(df.isnull().sum())
-
-df.drop_duplicates(inplace=True)
-
-print("\nShape After Removing Duplicates :", df.shape)
+st.title("🩺 Diabetes Progression Prediction")
+st.write("Enter patient details below")
 
 # =====================================================
-# Outlier Treatment Using IQR
+# User Inputs
 # =====================================================
 
-numeric_cols = df.select_dtypes(include=np.number).columns
+age = st.number_input("Age", value=0.05)
 
-for col in numeric_cols:
+sex = st.number_input("Sex", value=0.05)
 
-    Q1 = df[col].quantile(0.25)
-    Q3 = df[col].quantile(0.75)
+bmi = st.number_input("BMI", value=0.05)
 
-    IQR = Q3 - Q1
+bp = st.number_input("Blood Pressure", value=0.05)
 
-    lower = Q1 - 1.5 * IQR
-    upper = Q3 + 1.5 * IQR
+s1 = st.number_input("S1", value=0.05)
 
-    df[col] = np.where(df[col] < lower, lower, df[col])
-    df[col] = np.where(df[col] > upper, upper, df[col])
+s2 = st.number_input("S2", value=0.05)
 
-# =====================================================
-# Feature Engineering
-# =====================================================
+s4 = st.number_input("S4", value=0.05)
 
-df["bmi_age"] = df["bmi"] * df["age"]
+s5 = st.number_input("S5", value=0.05)
 
-df["bp_s5"] = df["bp"] * df["s5"]
-
-df["s1_s2_ratio"] = df["s1"] / (df["s2"] + 1e-5)
-
-# =====================================================
-# Remove Unnecessary Columns
-# =====================================================
-
-df.drop(
-    columns=[
-        "s1",
-        "s2",
-        "s3"
-    ],
-    inplace=True
-)
-
-# =====================================================
-# Features and Target
-# =====================================================
-
-X = df.drop("target", axis=1)
-
-y = df["target"]
-
-print("\nFinal Features")
-print(X.columns.tolist())
-
-# =====================================================
-# Train Test Split
-# =====================================================
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.20,
-    random_state=42
-)
-
-# =====================================================
-# Feature Scaling
-# =====================================================
-
-scaler = StandardScaler()
-
-X_train = scaler.fit_transform(X_train)
-
-X_test = scaler.transform(X_test)
-
-# Save Scaler
-
-with open("models/scaler.pkl", "wb") as file:
-    pickle.dump(scaler, file)
-
-# =====================================================
-# Base Learners
-# =====================================================
-
-base_models = [
-
-    (
-        "lr",
-        LinearRegression()
-    ),
-
-    (
-        "dt",
-        DecisionTreeRegressor(
-            max_depth=5,
-            random_state=42
-        )
-    ),
-
-    (
-        "rf",
-        RandomForestRegressor(
-            n_estimators=10,
-            max_depth=5,
-            random_state=42
-        )
-    )
-]
-
-# =====================================================
-# Meta Learner
-# =====================================================
-
-meta_model = LinearRegression()
-
-# =====================================================
-# Stacking Regressor
-# =====================================================
-
-model = StackingRegressor(
-    estimators=base_models,
-    final_estimator=meta_model,
-    cv=5
-)
-
-# =====================================================
-# Model Training
-# =====================================================
-
-model.fit(X_train, y_train)
+s6 = st.number_input("S6", value=0.05)
 
 # =====================================================
 # Prediction
 # =====================================================
 
-y_pred = model.predict(X_test)
+if st.button("Predict"):
 
-# =====================================================
-# Evaluation
-# =====================================================
+    # Feature Engineering
 
-mae = mean_absolute_error(y_test, y_pred)
+    bmi_age = bmi * age
 
-mse = mean_squared_error(y_test, y_pred)
+    bp_s5 = bp * s5
 
-rmse = np.sqrt(mse)
+    s1_s2_ratio = s1 / (s2 + 1e-5)
 
-r2 = r2_score(y_test, y_pred)
+    features = np.array([[
+        age,
+        sex,
+        bmi,
+        bp,
+        s4,
+        s5,
+        s6,
+        bmi_age,
+        bp_s5,
+        s1_s2_ratio
+    ]])
 
-print("\nModel Performance")
+    # Scaling
 
-print("MAE :", round(mae, 4))
+    features = scaler.transform(features)
 
-print("MSE :", round(mse, 4))
+    # Prediction
 
-print("RMSE :", round(rmse, 4))
+    prediction = model.predict(features)
 
-print("R2 Score :", round(r2, 4))
-
-# =====================================================
-# Save Model
-# =====================================================
-
-with open("models/stacking_regressor.pkl", "wb") as file:
-    pickle.dump(model, file)
-
-print("\nModel Saved Successfully")
+    st.success(
+        f"Predicted Disease Progression Score: {prediction[0]:.2f}"
+    )
